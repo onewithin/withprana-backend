@@ -5,7 +5,7 @@ CREATE TYPE "public"."ThoughtStatus" AS ENUM ('PENDING', 'POSTED', 'REPOSTED');
 ALTER TABLE "public"."users" ADD COLUMN     "active" BOOLEAN NOT NULL DEFAULT false,
 ADD COLUMN     "image" TEXT,
 ADD COLUMN     "signupMethod" VARCHAR(20) NOT NULL DEFAULT 'email',
-ADD COLUMN     "subscriptionType" TEXT NOT NULL DEFAULT 'free',
+ADD COLUMN     "subscriptionType" TEXT NOT NULL DEFAULT 'Free',
 ALTER COLUMN "created_at" SET DATA TYPE TIMESTAMP(3);
 
 -- CreateTable

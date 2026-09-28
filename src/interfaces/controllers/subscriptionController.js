@@ -1,6 +1,29 @@
 export class SubscriptionController {
-  constructor(subscriptionUseCases) {
+  constructor(subscriptionUseCases, sseService) {
     this.subscriptionUseCases = subscriptionUseCases;
+    this.sseService = sseService;
+  }
+
+  async subscribeSSE(request, reply) {
+    const userId = request.user.id;
+
+    // Set proper headers for SSE
+    reply.raw.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'Access-Control-Allow-Origin': '*'
+    });
+
+    reply.raw.write(`retry: 10000\n\n`);
+
+    // Register the client
+    this.sseService.addClient(userId, reply);
+
+    // Handle client disconnect
+    request.raw.on('close', () => {
+      this.sseService.removeClient(userId, reply);
+    });
   }
 
   async createCheckoutSession(request, reply) {
@@ -10,7 +33,7 @@ export class SubscriptionController {
 
       const result = await this.subscriptionUseCases.createSubscriptionCheckout(
         userId,
-        planId
+        planId,
       );
 
       return reply.code(200).send({
@@ -30,10 +53,11 @@ export class SubscriptionController {
       const { planId } = request.body;
       const userId = request.user.id;
 
-      const result = await this.subscriptionUseCases.createAppSubscriptionCheckout(
-        userId,
-        planId
-      );
+      const result =
+        await this.subscriptionUseCases.createAppSubscriptionCheckout(
+          userId,
+          planId,
+        );
 
       return reply.code(200).send({
         success: true,
@@ -50,21 +74,19 @@ export class SubscriptionController {
   async handleWebhook(event) {
     try {
       await this.subscriptionUseCases.handleWebhookEvent(event);
-  
+
       return { received: true };
     } catch (error) {
-      console.error('Webhook error:', error);
+      console.error("Webhook error:", error);
       throw error;
     }
   }
-  
 
   async getSubscriptionStatus(request, reply) {
     try {
       const userId = request.user.id;
-      const status = await this.subscriptionUseCases.getUserSubscriptionStatus(
-        userId
-      );
+      const status =
+        await this.subscriptionUseCases.getUserSubscriptionStatus(userId);
 
       return reply.code(200).send({
         success: true,
@@ -95,6 +117,17 @@ export class SubscriptionController {
     }
   }
 
+  async generateBillingPortal(request, reply) {
+    try {
+      const userId = request.user.id;
+      const { returnUrl } = request.body || {};
+      const url = await this.subscriptionUseCases.generateBillingPortalLink(userId, returnUrl);
+      return reply.code(200).send({ success: true, url });
+    } catch (error) {
+      return reply.code(400).send({ success: false, message: error.message });
+    }
+  }
+
   async getTransactionHistory(request, reply) {
     try {
       const userId = request.user.id;
@@ -102,7 +135,7 @@ export class SubscriptionController {
 
       const result = await this.subscriptionUseCases.getTransactionHistory(
         userId,
-        filters
+        filters,
       );
 
       return reply.code(200).send({
@@ -119,27 +152,42 @@ export class SubscriptionController {
 
   async getPlans(request, reply) {
     try {
-      const plans = await this.subscriptionUseCases.getSubscriptionPlans(request.user);
-      
-      if(plans?.isSubscribed){
+      const includeHidden = request.query?.includeHidden === "true" || request.query?.includeHidden === true;
+      const plans = await this.subscriptionUseCases.getSubscriptionPlans(
+        request.user,
+        includeHidden,
+      );
+
+      if (plans?.isSubscribed) {
         const planData = {
           plan: plans?.subscription?.plan?.name,
           renewalDate: plans?.subscription?.currentPeriodEnd,
           nextBillingAmount: plans?.subscription?.plan?.price,
           currency: plans?.subscription?.plan?.currency,
-        }
+        };
         return reply.code(200).send({
           success: true,
           data: plans.subscription,
-        }); 
-      }else{
+        });
+      }
+
+      if (!plans || (Array.isArray(plans) && plans.length === 0)) {
         return reply.code(200).send({
+          success: true,
+          data: [],
+          message: "No subscription plans available",
+        });
+      }
+
+      return reply.code(200).send({
         success: true,
         data: plans,
       });
-      }
     } catch (error) {
-      return reply.code(400).send({
+      console.error("Error in getPlans:", error);
+      // Determine if it should be 404 or 400 based on error
+      const statusCode = error.message.includes("not found") ? 404 : 400;
+      return reply.code(statusCode).send({
         success: false,
         message: error.message,
       });
@@ -212,9 +260,8 @@ export class SubscriptionController {
 
       return reply.code(200).send({
         success: true,
-        message: `Plan ${
-          plan.visible ? "activated" : "deactivated"
-        } successfully`,
+        message: `Plan ${plan.visible ? "activated" : "deactivated"
+          } successfully`,
         data: plan,
       });
     } catch (error) {
@@ -247,9 +294,8 @@ export class SubscriptionController {
     try {
       const { subscriptionId } = request.params;
 
-      const subscription = await this.subscriptionUseCases.getSubscriptionById(
-        subscriptionId
-      );
+      const subscription =
+        await this.subscriptionUseCases.getSubscriptionById(subscriptionId);
 
       return reply.code(200).send({
         success: true,
@@ -268,9 +314,8 @@ export class SubscriptionController {
     try {
       const { subscriptionId } = request.params;
 
-      const result = await this.subscriptionUseCases.adminCancelSubscription(
-        subscriptionId
-      );
+      const result =
+        await this.subscriptionUseCases.adminCancelSubscription(subscriptionId);
 
       return reply.code(200).send({
         success: true,
@@ -290,9 +335,8 @@ export class SubscriptionController {
     try {
       const filters = request.query;
 
-      const result = await this.subscriptionUseCases.getAdminTransactions(
-        filters
-      );
+      const result =
+        await this.subscriptionUseCases.getAdminTransactions(filters);
 
       return reply.code(200).send({
         success: true,

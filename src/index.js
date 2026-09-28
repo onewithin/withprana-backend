@@ -4,11 +4,19 @@ import cors from "@fastify/cors";
 import { registerRoutes } from "./interfaces/routes/index.js";
 import { initializeDatabaseConnections } from "./config/database.js";
 import { initializeMailer } from "./config/mail.js";
-import { PostgresOTPRepository } from "./infrastructure/databases/postgres/otpRepository.js";
-// import { postQueue } from './config/bullmq.js';
+import { PrismaUserRepository } from "./infrastructure/databases/postgres/userRepository.js";
 import fastifyRawBody from "fastify-raw-body";
 import rateLimit from "@fastify/rate-limit";
-import { thoughtQueue, meditationQueue } from "./config/bullmq.js";
+import {
+  thoughtQueue,
+  meditationQueue,
+  inactivityQueue,
+} from "./config/bullmq.js";
+import { StripeService } from "./infrastructure/services/stripeService.js";
+import { NotificationService } from "./infrastructure/services/notificationService.js";
+import { SSEService } from "./infrastructure/services/sseService.js";
+import { uploadToS3 } from "./infrastructure/services/uploadToS3.js";
+import { initializeSubscriptionCron } from "./infrastructure/jobs/subscriptionCron.js";
 
 const startServer = async () => {
   const app = fastify({ logger: true });
@@ -18,10 +26,10 @@ const startServer = async () => {
   };
 
   await app.register(fastifyRawBody, {
-    field: "rawBody", // request.rawBody will be set
-    global: false, // only apply to routes with config.rawBody = true
-    encoding: false, // keep it as Buffer, not string!
-    runFirst: true, // ensures it runs before any other body parser
+    field: "rawBody",
+    global: false,
+    encoding: false,
+    runFirst: true,
   });
 
   await app.register(cors, {
@@ -31,7 +39,7 @@ const startServer = async () => {
   });
 
   await app.register(rateLimit, {
-    max: 60, // each user/IP can make 60 requests per minute
+    max: 60,
     timeWindow: "1 minute",
     allowList: ["127.0.0.1"],
     keyGenerator: (req) => req.user?.id || req.ip,
@@ -46,15 +54,29 @@ const startServer = async () => {
   const { prisma, mongoClient } = await initializeDatabaseConnections();
   const mailer = initializeMailer();
 
+  // Initialize subscription expiry cron job
+  initializeSubscriptionCron(prisma);
+
   const prismaRepository = { prisma };
   const mongoRepository = { mongo: mongoClient };
+  const userRepository = new PrismaUserRepository(prisma); // Initialize repositories
+
+  // Services
+  const stripeService = new StripeService();
+  const notificationService = new NotificationService();
+  const sseService = new SSEService();
 
   await registerRoutes(app, {
     prismaRepository,
     mongoRepository,
+    userRepository, // Pass the instantiated repository
     mailer,
     thoughtQueue,
     meditationQueue,
+    uploadToS3,
+    notificationService,
+    stripeService,
+    sseService,
   });
 
   try {
@@ -70,3 +92,13 @@ const startServer = async () => {
 };
 
 startServer();
+
+inactivityQueue.add(
+  "checkInactivity",
+  {},
+  {
+    repeat: {
+      pattern: "0 0 * * *",
+    },
+  },
+);

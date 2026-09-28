@@ -1,23 +1,32 @@
+import { CacheService } from "../../services/cacheService.js";
+
 export class CategoryRepository {
     constructor(prisma) {
         this.prisma = prisma;
     }
 
     async create(data) {
-        return this.prisma.category.create({ 
+        const created = await this.prisma.category.create({ 
             data: {
                 name: data.name,
                 backgroundImage: data.backgroundImage || null,
                 icon: data.icon || null,
                 active: data.active !== undefined ? data.active : true,
                 isDeleted: data.isDeleted !== undefined ? data.isDeleted : false,
-                color:data?.color
+                color: data?.color
             }
         });
+        await CacheService.clearPattern("categories:*");
+        await CacheService.clearPattern("meditations:*");
+        return created;
     }
 
     async findById(id) {
-        return this.prisma.category.findUnique({ 
+        const cacheKey = `categories:id:${id}`;
+        const cached = await CacheService.get(cacheKey);
+        if (cached) return cached;
+
+        const category = await this.prisma.category.findUnique({ 
             where: { id },
             include: {
                 meditations: {
@@ -34,10 +43,18 @@ export class CategoryRepository {
                 }
             }
         });
+        if (category) {
+            await CacheService.set(cacheKey, category, 900);
+        }
+        return category;
     }
 
     async findAll() {
-        return this.prisma.category.findMany({
+        const cacheKey = "categories:all";
+        const cached = await CacheService.get(cacheKey);
+        if (cached) return cached;
+
+        const categories = await this.prisma.category.findMany({
             where: {
                 active: true,
                 isDeleted: false,
@@ -64,10 +81,12 @@ export class CategoryRepository {
                 createdAt: 'desc'
             }
         });
+        await CacheService.set(cacheKey, categories, 900);
+        return categories;
     }
 
     async update(id, data) {
-        return this.prisma.category.update({
+        const updated = await this.prisma.category.update({
             where: { id },
             data: {
                 ...data,
@@ -88,10 +107,13 @@ export class CategoryRepository {
                 }
             }
         });
+        await CacheService.clearPattern("categories:*");
+        await CacheService.clearPattern("meditations:*");
+        return updated;
     }
 
     async delete(id) {
-        return this.prisma.category.update({ 
+        const deleted = await this.prisma.category.update({ 
             where: { id },
             data: { 
                 isDeleted: true,
@@ -99,6 +121,9 @@ export class CategoryRepository {
                 updatedAt: new Date()
             }
         });
+        await CacheService.clearPattern("categories:*");
+        await CacheService.clearPattern("meditations:*");
+        return deleted;
     }
 
     async findByName(name) {
@@ -127,7 +152,7 @@ export class CategoryRepository {
     }
 
     async restore(id) {
-        return this.prisma.category.update({
+        const restored = await this.prisma.category.update({
             where: { id },
             data: {
                 isDeleted: false,
@@ -135,5 +160,8 @@ export class CategoryRepository {
                 updatedAt: new Date()
             }
         });
+        await CacheService.clearPattern("categories:*");
+        await CacheService.clearPattern("meditations:*");
+        return restored;
     }
 }

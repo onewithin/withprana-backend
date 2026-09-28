@@ -7,7 +7,7 @@ export class LikedUsecase {
   // Like a meditation
   async likeMeditation(userId, meditationId) {
     try {
-      if (!userId || isNaN(userId)) {
+      if (!userId) {
         throw new Error('Valid user ID is required');
       }
 
@@ -30,7 +30,7 @@ export class LikedUsecase {
   // Dislike (unlike) a meditation
   async dislikeMeditation(userId, meditationId) {
     try {
-      if (!userId || isNaN(userId)) {
+      if (!userId) {
         throw new Error('Valid user ID is required');
       }
 
@@ -45,13 +45,13 @@ export class LikedUsecase {
   }
 
   // Get all liked meditations of a user
-  async getLikedMeditations(userId,categoryId , type , limit ,skip) {
+  async getLikedMeditations(userId, categoryId, type, limit, skip) {
     try {
-      if (!userId || isNaN(userId)) {
+      if (!userId) {
         throw new Error('Valid user ID is required');
       }
 
-      const likedMeditations = await this.likedRepository.getLikedMeditations(userId,categoryId , type , limit ,skip);
+      const likedMeditations = await this.likedRepository.getLikedMeditations(userId, categoryId, type, limit, skip);
 
       if (!likedMeditations || likedMeditations.length === 0) {
         throw new Error('No liked meditations found for this user');
@@ -66,7 +66,7 @@ export class LikedUsecase {
   // Check if meditation is already liked by user
   async isMeditationLiked(userId, meditationId) {
     try {
-      if (!userId || isNaN(userId)) {
+      if (!userId) {
         throw new Error('Valid user ID is required');
       }
 

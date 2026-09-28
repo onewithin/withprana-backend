@@ -8,7 +8,7 @@ datasource db {
 }
 
 model Otp {
-  id        Int      @id @default(autoincrement())
+  id        String   @id @default(uuid())
   email     String
   otpCode   String   @map("otpcode")
   expiresAt DateTime @map("expires_at")
@@ -19,18 +19,19 @@ model Otp {
 }
 
 model Admin {
-  id        Int      @id @default(autoincrement())
-  email     String   @unique
-  password  String
-  active    Boolean  @default(true)
-  isSuper   Boolean  @default(false)
-  createdAt DateTime @default(now()) @map("created_at")
+  id           String         @id @default(uuid())
+  email        String         @unique
+  password     String
+  active       Boolean        @default(true)
+  isSuper      Boolean        @default(false)
+  createdAt    DateTime       @default(now()) @map("created_at")
+  loginHistory LoginHistory[]
 
   @@map("admins")
 }
 
 model Category {
-  id              Int           @id @default(autoincrement())
+  id              String        @id @default(uuid())
   name            String
   active          Boolean       @default(true)
   isDeleted       Boolean       @default(false)
@@ -46,92 +47,142 @@ model Category {
 }
 
 model User {
-  id               BigInt         @id @default(autoincrement())
-  createdAt        DateTime       @default(now()) @map("created_at")
-  name             String?
-  email            String         @unique
-  password         String?
-  isVerified       Boolean        @default(false)
-  active           Boolean        @default(false)
-  image            String?
-  signupMethod     String         @default("email") @db.VarChar(20)
-  subscriptionType String         @default("free")
-  stripeCustomerId String?
-  likedMeditations Liked[]
-  playlists        Playlist[]
-  subscriptions    Subscription[]
-  transactions     Transaction[]
-  userTags         UserTag[]
-  encryptedUserKey String?
+  id                      String                   @id @default(uuid())
+  createdAt               DateTime                 @default(now()) @map("created_at")
+  name                    String?
+  email                   String                   @unique
+  password                String?
+  isVerified              Boolean                  @default(false)
+  active                  Boolean                  @default(false)
+  image                   String?
+  signupMethod            String                   @default("email") @db.VarChar(20)
+  subscriptionType        String                   @default("Free")
+  stripeCustomerId        String?
+  encryptedUserKey        String?
+  systemDeactivated       Boolean                  @default(false)
+  fcmToken                String?                  @map("fcm_token")
+  deleteRequestedAt       DateTime?
+  isDeleted               Boolean                  @default(false)
+  loginHistory            LoginHistory[]
+  downloadedMeditations   DownloadedMeditation[]
+  likedMeditations        Liked[]
+  watchHistory            MeditationWatchHistory[]
+  notificationPreferences NotificationPreferences?
+  notifications           Notification[]
+  playlists               Playlist[]
+  qrSessions              QrSession[]
+  refreshTokens           RefreshToken[]
+  sarLogs                 SARLogRequest[]
+  subscriptions           Subscription[]
+  transactions            Transaction[]
+  loginLogs               UserLoginLog?
+  userTags                UserTag[]
+  notificationsClearedAt  DateTime?                @map("notifications_cleared_at")
+  deletedGlobalNotifications UserDeletedGlobalNotification[]
 
+  @@index([subscriptionType])
+  @@index([signupMethod])
+  @@index([createdAt])
   @@map("users")
 }
 
-model LoginHistory {
-  id           String    @id @default(cuid())
-  userId       String?
-  adminId      String?
-  role         String
-  loggedInAt   DateTime  @default(now())
-  loggedOutAt  DateTime?
-  ipAddress    String?
-  userAgent    String?
-  device       String?
-  isActive     Boolean   @default(true)
+model NotificationPreferences {
+  id         String   @id @default(uuid())
+  userId     String   @unique
+  push       Boolean  @default(true)
+  mindful    Boolean  @default(true)
+  newContent Boolean  @default(true)
+  tips       Boolean  @default(true)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  user         User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  admin        Admin?    @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  @@map("notification_preferences")
+}
+
+model LoginHistory {
+  id          String    @id @default(uuid())
+  userId      String?
+  adminId     String?
+  role        String
+  loggedInAt  DateTime  @default(now())
+  loggedOutAt DateTime?
+  ipAddress   String?
+  userAgent   String?
+  device      String?
+  isActive    Boolean   @default(true)
+  admin       Admin?    @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  user        User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([adminId])
 }
 
-
 model Meditation {
-  id             String               @id @default(cuid())
+  id             String                   @id @default(uuid())
   title          String
   description    String?
   duration       Int
   link           String
   thumbnail      String?
-  isPremium      Boolean              @default(false)
-  active         Boolean              @default(true)
-  isDeleted      Boolean              @default(false)
-  playCount      Int                  @default(0)
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
-  categoryId     Int
+  isPremium      Boolean                  @default(false)
+  active         Boolean                  @default(true)
+  isDeleted      Boolean                  @default(false)
+  playCount      Int                      @default(0)
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+  categoryId     String
   subcategoryId  String?
   type           String?
   scheduledAt    DateTime?
+  appImg         String?
+  originalAudioKey String?
+  downloadedBy   DownloadedMeditation[]
   likedUsers     Liked[]
   meditationTags MeditationTags[]
-  category       Category             @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  subcategory    Subcategory?         @relation(fields: [subcategoryId], references: [id])
+  watchHistory   MeditationWatchHistory[]
+  category       Category                 @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  subcategory    Subcategory?             @relation(fields: [subcategoryId], references: [id])
   playlistItems  PlaylistMeditation[]
 
+  @@index([categoryId, isDeleted, active])
+  @@index([subcategoryId, isDeleted, active])
+  @@index([isPremium, isDeleted, active])
+  @@index([playCount(sort: Desc)])
   @@map("meditations")
 }
 
 model MeditationWatchHistory {
-  id            String     @id @default(cuid())
-  userId        String
-  meditationId  String
-  watchedAt     DateTime   @default(now())
+  id             String     @id @default(uuid())
+  userId         String
+  meditationId   String
+  watchedAt      DateTime   @default(now())
   watchedSeconds Int?
-  completed     Boolean    @default(false)
-  device        String?
+  completed      Boolean    @default(false)
+  device         String?
+  meditation     Meditation @relation(fields: [meditationId], references: [id], onDelete: Cascade)
+  user           User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  meditation    Meditation @relation(fields: [meditationId], references: [id], onDelete: Cascade)
-
+  @@unique([userId, meditationId, watchedAt])
   @@index([userId])
   @@index([watchedAt])
-  @@unique([userId, meditationId, watchedAt])
   @@map("meditation_watch_history")
 }
 
+model DownloadedMeditation {
+  id           String     @id @default(uuid())
+  userId       String
+  meditationId String
+  downloadedAt DateTime   @default(now()) @map("downloaded_at")
+  meditation   Meditation @relation(fields: [meditationId], references: [id], onDelete: Cascade)
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, meditationId])
+  @@map("downloaded_meditations")
+}
+
 model Tag {
-  id                   String                @id @default(cuid())
+  id                   String                @id @default(uuid())
   name                 String                @unique
   active               Boolean               @default(true)
   isDeleted            Boolean               @default(false)
@@ -162,7 +213,7 @@ model Subcategory {
   isDeleted   Boolean      @default(false)
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
-  categoryId  Int
+  categoryId  String
   color       String?
   meditations Meditation[]
   category    Category     @relation(fields: [categoryId], references: [id], onDelete: Cascade)
@@ -173,7 +224,7 @@ model Subcategory {
 
 model Liked {
   id           String     @id @default(uuid())
-  userId       BigInt
+  userId       String
   meditationId String
   createdAt    DateTime   @default(now())
   meditation   Meditation @relation(fields: [meditationId], references: [id], onDelete: Cascade)
@@ -191,7 +242,7 @@ model Playlist {
   isPublic    Boolean              @default(false)
   createdAt   DateTime             @default(now())
   updatedAt   DateTime             @updatedAt
-  userId      BigInt
+  userId      String
   items       PlaylistMeditation[]
   user        User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -213,7 +264,7 @@ model PlaylistMeditation {
 }
 
 model Policy {
-  id        String   @id @default(cuid())
+  id        String   @id @default(uuid())
   type      Int      @unique
   content   String
   active    Boolean  @default(true)
@@ -270,7 +321,7 @@ model OnboardingOptionTag {
 
 model UserTag {
   id        String   @id @default(uuid())
-  userId    BigInt
+  userId    String
   tagId     String
   createdAt DateTime @default(now())
   tag       Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
@@ -283,7 +334,7 @@ model UserTag {
 }
 
 model SubscriptionPlan {
-  id            String         @id @default(cuid())
+  id            String         @id @default(uuid())
   name          String
   price         Float
   currency      String         @default("usd")
@@ -301,8 +352,8 @@ model SubscriptionPlan {
 }
 
 model Subscription {
-  id                   String             @id @default(cuid())
-  userId               BigInt
+  id                   String             @id @default(uuid())
+  userId               String
   planId               String
   status               SubscriptionStatus @default(ACTIVE)
   currentPeriodStart   DateTime
@@ -316,14 +367,15 @@ model Subscription {
   user                 User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   transactions         Transaction[]
 
-  @@unique([userId, status])
+  @@index([userId, status, currentPeriodEnd])
+  @@index([status, currentPeriodEnd])
   @@map("subscriptions")
 }
 
 model Transaction {
-  id                    String            @id @default(cuid())
+  id                    String            @id @default(uuid())
   subscriptionId        String?
-  userId                BigInt
+  userId                String
   amount                Float
   currency              String            @default("usd")
   status                TransactionStatus @default(PENDING)
@@ -339,6 +391,8 @@ model Transaction {
   subscription          Subscription?     @relation(fields: [subscriptionId], references: [id])
   user                  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([status, type])
   @@map("transactions")
 }
 
@@ -353,7 +407,6 @@ model AuditLog {
   createdAt DateTime @default(now())
 }
 
-
 model Settings {
   id             String   @id @default(uuid())
   tagline        String
@@ -366,7 +419,7 @@ model Settings {
 }
 
 model ThoughtOfTheDay {
-  id          String        @id
+  id          String        @id @default(uuid())
   thumbnail   String
   link        String
   title       String
@@ -375,7 +428,94 @@ model ThoughtOfTheDay {
   scheduledAt DateTime
   status      ThoughtStatus @default(PENDING)
   createdAt   DateTime      @default(now())
-  updatedAt   DateTime
+  updatedAt   DateTime      @updatedAt
+}
+
+model UserLoginLog {
+  id          String   @id @default(uuid())
+  userId      String   @unique
+  lastLogin   DateTime
+  warningSent Boolean  @default(false)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_login_logs")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  revoked   Boolean  @default(false)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model SARLogRequest {
+  id        String   @id @default(uuid())
+  userId    String
+  createdAt DateTime @default(now())
+  status    String   @default("APPROVED")
+  doc       String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sar_log_requests")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  title     String
+  message   String
+  imageUrl  String?
+  viewed    Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+  isDeleted Boolean  @default(false) @map("is_deleted")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("notifications")
+}
+
+model GlobalNotification {
+  id        String   @id @default(uuid())
+  title     String
+  message   String
+  imageUrl  String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  deletedBy UserDeletedGlobalNotification[]
+
+  @@map("global_notifications")
+}
+
+model UserDeletedGlobalNotification {
+  userId               String
+  globalNotificationId String
+  deletedAt            DateTime @default(now()) @map("deleted_at")
+
+  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  globalNotification GlobalNotification @relation(fields: [globalNotificationId], references: [id], onDelete: Cascade)
+
+  @@id([userId, globalNotificationId])
+  @@map("user_deleted_global_notifications")
+}
+
+model QrSession {
+  id           String   @id @default(uuid())
+  qrToken      String   @unique
+  status       String   @default("PENDING")
+  userId       String?
+  token        String?
+  refreshToken String?
+  createdAt    DateTime @default(now())
+  expiresAt    DateTime
+  user         User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("qr_sessions")
 }
 
 enum ThoughtStatus {

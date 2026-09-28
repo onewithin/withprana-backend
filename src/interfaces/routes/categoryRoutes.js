@@ -1,15 +1,8 @@
-import fs from "fs/promises";
-import path from "path";
-import { fileURLToPath } from "url";
-
 import { CategoryRepository } from "../../infrastructure/databases/postgres/categoryRepository.js";
 import { CategoryUsecase } from "../../domain/usecases/categoryUsecase.js";
 import { CategoryController } from "../controllers/categoryController.js";
 import fastifyMultipart from "@fastify/multipart";
 import { uploadToS3 } from "../../infrastructure/services/uploadToS3.js";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 export const categoryRoutes = async (app, { prismaRepository }) => {
   const repo = new CategoryRepository(prismaRepository.prisma);
@@ -24,70 +17,97 @@ export const categoryRoutes = async (app, { prismaRepository }) => {
     attachFieldsToBody: true
   });
 
- app.post("/", async (req, reply) => {
-  try {
-    const { name, backgroundImage, icon,color} = req.body;
-
-    let backgroundImageUrl = null;
-    let iconUrl = null;
-
-    if (backgroundImage?.file) {
-      let image = await uploadToS3(backgroundImage,"images")
-      backgroundImageUrl=image[0]
-      console.log(image)
-    } else if (typeof backgroundImage === "string" && backgroundImage.trim() !== "") {
-      backgroundImageUrl = backgroundImage;
-    }
-
-    if (icon?.file) {
-      let image=await uploadToS3(icon,"images")
-      iconUrl =image[0]
-    } else if (typeof icon === "string" && icon.trim() !== "") {
-      iconUrl = icon;
-    }
-
-    const payload = {
-      name: typeof name === "object" ? name.value : name,
-      backgroundImage: backgroundImageUrl,
-      icon: iconUrl,
-      color:typeof color === "object" ? color.value : color,
-    };
-
-
-    console.log(payload)
-    await controller.create({ ...req, body: payload }, reply);
-  } catch (error) {
-    console.error("Form data processing error:", error);
-    reply
-      .status(500)
-      .send({ error: "Failed to process form data", details: error.message });
-  }
-});
-
-
-  app.patch("/:id", async (req, reply) => {
+  app.post("/", async (req, reply) => {
     try {
-      const { name, backgroundImage, icon } = req.body;
+      const { name, backgroundImage, icon, color } = req.body;
 
       let backgroundImageUrl = null;
       let iconUrl = null;
 
       if (backgroundImage?.file) {
-        backgroundImageUrl = await saveUploadedFile(backgroundImage);
+        const image = await uploadToS3(backgroundImage, "images");
+        backgroundImageUrl = image[0] || null;
+      } else if (
+        backgroundImage &&
+        typeof backgroundImage.value === "string" &&
+        backgroundImage.value.trim() !== ""
+      ) {
+        backgroundImageUrl = backgroundImage.value;
+      } else if (
+        typeof backgroundImage === "string" &&
+        backgroundImage.trim() !== ""
+      ) {
+        backgroundImageUrl = backgroundImage;
+      }
+
+      if (icon?.file) {
+        const image = await uploadToS3(icon, "images");
+        iconUrl = image[0] || null;
+      } else if (
+        icon &&
+        typeof icon.value === "string" &&
+        icon.value.trim() !== ""
+      ) {
+        iconUrl = icon.value;
+      } else if (typeof icon === "string" && icon.trim() !== "") {
+        iconUrl = icon;
+      }
+
+      const payload = {
+        name: typeof name === "object" ? name.value : name,
+        backgroundImage: backgroundImageUrl,
+        icon: iconUrl,
+        color: typeof color === "object" ? color.value : color,
+      };
+
+      await controller.create({ ...req, body: payload }, reply);
+    } catch (error) {
+      console.error("Form data processing error:", error);
+      reply
+        .status(500)
+        .send({ error: "Failed to process form data", details: error.message });
+    }
+  });
+
+
+  app.patch("/:id", async (req, reply) => {
+    try {
+      const { name, backgroundImage, icon, color } = req.body;
+
+      let backgroundImageUrl;
+      let iconUrl;
+
+      if (backgroundImage?.file) {
+        const image = await uploadToS3(backgroundImage, "images");
+        backgroundImageUrl = image[0] || null;
+      } else if (
+        backgroundImage &&
+        typeof backgroundImage.value === "string"
+      ) {
+        backgroundImageUrl = backgroundImage.value;
       } else if (typeof backgroundImage === "string") {
         backgroundImageUrl = backgroundImage;
       }
 
       if (icon?.file) {
-        iconUrl = await saveUploadedFile(icon);
+        const image = await uploadToS3(icon, "images");
+        iconUrl = image[0] || null;
+      } else if (icon && typeof icon.value === "string") {
+        iconUrl = icon.value;
       } else if (typeof icon === "string") {
         iconUrl = icon;
       }
 
+      const normalizedName = typeof name === "object" ? name.value : name;
+      const normalizedColor = typeof color === "object" ? color.value : color;
+
       req.body = {
-        ...(name && { name: typeof name === "object" ? name.value : name }),
-        ...(backgroundImageUrl && { backgroundImage: backgroundImageUrl }),
-        ...(iconUrl && { icon: iconUrl })
+        ...(normalizedName !== undefined && { name: normalizedName }),
+        ...(normalizedColor !== undefined && { color: normalizedColor }),
+        ...(backgroundImageUrl !== undefined && {
+          backgroundImage: backgroundImageUrl,
+        }),
+        ...(iconUrl !== undefined && { icon: iconUrl }),
       };
 
       await controller.update(req, reply);
@@ -103,24 +123,3 @@ export const categoryRoutes = async (app, { prismaRepository }) => {
   app.get("/:id", (req, reply) => controller.getById(req, reply));
   app.delete("/:id", (req, reply) => controller.delete(req, reply));
 };
-
-async function saveUploadedFile(fileData) {
-  try {
-    const buffer = await fileData.toBuffer(); 
-    const filename = `${Date.now()}-${fileData.filename}`;
-    const uploadDir = path.join(__dirname, "../../uploads");
-
-    try {
-      await fs.access(uploadDir);
-    } catch {
-      await fs.mkdir(uploadDir, { recursive: true });
-    }
-
-    await fs.writeFile(path.join(uploadDir, filename), buffer);
-
-    return `/uploads/${filename}`;
-  } catch (error) {
-    console.error("File save error:", error);
-    throw new Error("Failed to save uploaded file");
-  }
-}

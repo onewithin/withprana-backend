@@ -3,7 +3,7 @@ export class CategoryUsecase {
         this.categoryRepository = categoryRepository;
     }
 
-    async createCategory({ name, backgroundImage, icon,color}) {
+    async createCategory({ name, backgroundImage, icon, color }) {
         try {
             if (!name || name.trim() === '') {
                 throw new Error('Category name is required');
@@ -30,7 +30,7 @@ export class CategoryUsecase {
                 name: name.trim(),
                 backgroundImage: backgroundImage || null,
                 icon: icon || null,
-                color:color
+                color: color
             };
 
             return await this.categoryRepository.create(categoryData);
@@ -41,12 +41,12 @@ export class CategoryUsecase {
 
     async getCategoryById(id) {
         try {
-            if (!id || isNaN(id)) {
+            if (!id) {
                 throw new Error('Valid category ID is required');
             }
 
             const category = await this.categoryRepository.findById(id);
-            
+
             if (!category) {
                 throw new Error('Category not found');
             }
@@ -64,7 +64,7 @@ export class CategoryUsecase {
     async getAllCategories() {
         try {
             const categories = await this.categoryRepository.findAll();
-            
+
             if (!categories || categories.length === 0) {
                 throw new Error('No categories found');
             }
@@ -77,7 +77,7 @@ export class CategoryUsecase {
 
     async updateCategory(id, data) {
         try {
-            if (!id || isNaN(id)) {
+            if (!id) {
                 throw new Error('Valid category ID is required');
             }
 
@@ -116,7 +116,7 @@ export class CategoryUsecase {
 
     async deleteCategory(id) {
         try {
-            if (!id || isNaN(id)) {
+            if (!id) {
                 throw new Error('Valid category ID is required');
             }
 
@@ -147,12 +147,12 @@ export class CategoryUsecase {
 
     async restoreCategory(id) {
         try {
-            if (!id || isNaN(id)) {
+            if (!id) {
                 throw new Error('Valid category ID is required');
             }
 
             const category = await this.categoryRepository.findById(id);
-            
+
             if (!category) {
                 throw new Error('Category not found');
             }

@@ -9,5 +9,6 @@ export const tagsRoutes = async (app, { prismaRepository }) => {
 
   app.post("/", (req, reply) => controller.create(req, reply));
   app.get("/", (req, reply) => controller.getAll(req, reply));
+  app.delete("/:id", (req, reply) => controller.delete(req, reply));
 };
 

@@ -5,7 +5,7 @@ export class TagController {
 
     async create(req, reply) {
         try {
-            const { name} = req.body;
+            const { name } = req.body;
 
             const payload = {
                 name: typeof name === "object" ? name.value : name,
@@ -27,5 +27,15 @@ export class TagController {
         }
     }
 
-      
+    async delete(req, reply) {
+        try {
+            const { id } = req.params;
+            const result = await this.tagUsecase.deleteTag(id);
+            reply.send(result);
+        } catch (err) {
+            reply.status(500).send({ message: err.message });
+        }
+    }
+
+
 }

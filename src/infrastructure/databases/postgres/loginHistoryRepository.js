@@ -78,4 +78,28 @@ export class LoginHistoryRepository {
             },
         });
     }
+
+    async logoutLastForUser(userId) {
+        const lastLogin = await this.prisma.loginHistory.findFirst({
+            where: {
+                userId,
+                role: "USER",
+                isActive: true,
+            },
+            orderBy: {
+                loggedInAt: "desc",
+            },
+        });
+
+        if (!lastLogin) return null;
+
+        return this.prisma.loginHistory.update({
+            where: { id: lastLogin.id },
+            data: {
+                loggedOutAt: new Date(),
+                isActive: false,
+            },
+        });
+    }
+
 }

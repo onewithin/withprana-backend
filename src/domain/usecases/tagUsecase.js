@@ -26,7 +26,7 @@ export class TagsUsecase {
     async getAlltags() {
         try {
             const tags = await this.tagsRepository.findAll();
-            
+
             if (!tags || tags.length === 0) {
                 throw new Error('No tags found');
             }
@@ -34,6 +34,15 @@ export class TagsUsecase {
             return tags;
         } catch (error) {
             throw new Error(`Failed to get tags: ${error.message}`);
+        }
+    }
+
+    async deleteTag(id) {
+        try {
+            if (!id) throw new Error('Tag id is required');
+            return await this.tagsRepository.delete(id);
+        } catch (error) {
+            throw new Error(`Failed to delete tag: ${error.message}`);
         }
     }
 

@@ -1,6 +1,10 @@
 import { PrismaClient } from '@prisma/client';
 import { MongoClient } from 'mongodb';
 import dotenv from 'dotenv';
+import dns from 'dns';
+
+dns.setServers(['8.8.8.8', '8.8.4.4']);
+
 import { PrismaUserRepository } from '../infrastructure/databases/postgres/userRepository.js';
 import { MongoUserRepository } from '../infrastructure/databases/mongo/userRepository.js';
 import { auditMiddleware } from '../interfaces/middleware/auditMiddleware.js';
