@@ -1,3 +1,5 @@
+import { CacheService } from "../../services/cacheService.js";
+
 export class DashboardRepository {
   constructor(prisma) {
     if (!prisma) {
@@ -8,11 +10,16 @@ export class DashboardRepository {
 
   async getStats() {
     try {
+      const cacheKey = "dashboard:stats";
+      const cached = await CacheService.get(cacheKey);
+      if (cached) {
+        return cached;
+      }
+
       const now = new Date();
       const todayStart = new Date(now);
       todayStart.setHours(0, 0, 0, 0);
 
-      // Build last 7 days date ranges (oldest first)
       const days = Array.from({ length: 7 }, (_, i) => {
         const start = new Date(now);
         start.setDate(start.getDate() - (6 - i));
@@ -80,7 +87,7 @@ export class DashboardRepository {
         premiumUsers: dailyActivityRaw[i * 2 + 1],
       }));
 
-      return {
+      const result = {
         users: {
           total: totalUsers,
           active: activeUsers,
@@ -100,6 +107,9 @@ export class DashboardRepository {
         mostPlayed: mostPlayedMeditation ?? null,
         dailyActivity,
       };
+
+      await CacheService.set(cacheKey, result, 600); // 10 minute TTL
+      return result;
     } catch (error) {
       console.error("Error in DashboardRepository.getStats:", error);
       throw error;

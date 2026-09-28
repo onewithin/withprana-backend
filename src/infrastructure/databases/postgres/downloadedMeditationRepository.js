@@ -4,14 +4,20 @@ export class DownloadedMeditationRepository {
   }
 
   async add(userId, meditationId) {
-    return this.prisma.downloadedMeditation.create({
-      data: {
+    return this.prisma.downloadedMeditation.upsert({
+      where: {
+        userId_meditationId: {
+          userId,
+          meditationId,
+        },
+      },
+      update: {
+        downloadedAt: new Date(),
+      },
+      create: {
         userId,
         meditationId,
       },
-      // include: {
-      //   meditation: true,
-      // },
     });
   }
 

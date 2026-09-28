@@ -1,9 +1,11 @@
 import cron from "node-cron";
 import { NotificationService } from "../services/notificationService.js";
-
-const notificationService = new NotificationService();
+import { NotificationRepository } from "../databases/postgres/notificationRepository.js";
 
 export const initializeSubscriptionCron = (prisma) => {
+  const notificationRepo = new NotificationRepository(prisma);
+  const notificationService = new NotificationService(notificationRepo);
+
   // 1. Subscription Ending Soon (Runs daily at midnight)
   cron.schedule("0 0 * * *", async () => {
     console.log("⏳ Running subscription expiry check...");
@@ -36,9 +38,8 @@ export const initializeSubscriptionCron = (prisma) => {
       );
 
       for (const sub of subscriptions) {
-        if (sub.user && sub.user.email) {
-          // Send Ending Soon Email (Works for both Trial and Regular)
-          await notificationService.sendSubscriptionEndingSoonEmail(
+        if (sub.user) {
+          await notificationService.notifyPlanRenewalReminder(
             sub.user,
             sub.plan || { name: "Subscription" },
             sub.currentPeriodEnd,

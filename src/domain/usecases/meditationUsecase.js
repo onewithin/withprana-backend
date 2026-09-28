@@ -78,6 +78,13 @@ export class MeditationUsecase {
   async getMeditationById(id, user) {
     const meditation = await this.meditationRepository.findById(id, user?.id);
     if (!meditation) throw new Error("Meditation not found");
+
+    if (meditation.meditationTags) {
+      meditation.tags = meditation.meditationTags.map((mt) => mt.tag || mt);
+    } else {
+      meditation.tags = [];
+    }
+
     if (user?.role == "USER") {
       const watchHistory = await this.meditationWatchHistoryRepository.create({
         userId: user.id,

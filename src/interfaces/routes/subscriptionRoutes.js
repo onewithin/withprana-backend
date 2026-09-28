@@ -1,6 +1,7 @@
 import { SubscriptionController } from "../controllers/subscriptionController.js";
 import { SubscriptionUseCases } from "../../domain/usecases/subscriptionUseCases.js";
 import { SubscriptionRepository } from "../../infrastructure/databases/postgres/SubscriptionRepository.js";
+import { NotificationRepository } from "../../infrastructure/databases/postgres/notificationRepository.js";
 import { StripeService } from "../../infrastructure/services/stripeService.js";
 import { NotificationService } from "../../infrastructure/services/notificationService.js";
 import Stripe from "stripe";
@@ -11,8 +12,9 @@ export const setupSubscriptionRoutes = (
   { prismaRepository, userRepository, mailer, sseService },
 ) => {
   const subscriptionRepo = new SubscriptionRepository(prismaRepository.prisma);
+  const notificationRepo = new NotificationRepository(prismaRepository.prisma);
   const stripeService = new StripeService();
-  const notificationService = new NotificationService();
+  const notificationService = new NotificationService(notificationRepo);
   const subscriptionUseCases = new SubscriptionUseCases(
     subscriptionRepo,
     userRepository,

@@ -6,6 +6,23 @@ export class NotificationRepository {
     this.prisma = prisma;
   }
 
+  async createNotification(data) {
+    try {
+      return await this.prisma.notification.create({
+        data: {
+          userId: data.userId,
+          title: data.title,
+          body: data.body,
+          imageUrl: data.imageUrl || null,
+          type: data.type || "GENERAL",
+        },
+      });
+    } catch (error) {
+      console.error("Error creating single notification:", error);
+      throw error;
+    }
+  }
+
   async createBatch(notifications) {
     try {
       const result = await this.prisma.notification.createMany({

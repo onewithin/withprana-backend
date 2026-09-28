@@ -1,8 +1,9 @@
 import { initializeMailer } from "../../config/mail.js";
 
 export class NotificationService {
-  constructor() {
+  constructor(notificationRepo = null) {
     this.mailer = initializeMailer();
+    this.notificationRepo = notificationRepo;
     this.fromEmail =
       process.env.MAIL_FROM ||
       '"Being One Within" <no-reply@beingonewithin.app>';
@@ -269,5 +270,62 @@ export class NotificationService {
       </div>
     `;
     await this.sendEmail(adminEmail, subject, text, html);
+  }
+
+  async createInAppNotification(userId, title, body, type = "GENERAL", imageUrl = null) {
+    if (!userId || !this.notificationRepo) return null;
+    try {
+      return await this.notificationRepo.createNotification({
+        userId,
+        title,
+        body,
+        type,
+        imageUrl,
+      });
+    } catch (error) {
+      console.error(`❌ Failed to create in-app notification for user ${userId}:`, error);
+      return null;
+    }
+  }
+
+  async notifyPremiumPlanSelected(user, plan, endDate) {
+    const planName = plan?.name || "Premium Plan";
+    const title = "Premium Subscription Activated! 🌟";
+    const body = `Your subscription to ${planName} is now active. Enjoy unlimited access!`;
+
+    await this.createInAppNotification(user.id, title, body, "SUBSCRIPTION_SELECTED");
+
+    if (user.email) {
+      await this.sendSubscriptionStartedEmail(user, plan, endDate);
+    }
+  }
+
+  async notifyPlanRenewalReminder(user, plan, endDate) {
+    const planName = plan?.name || "Subscription";
+    const endStr = new Date(endDate).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+    const title = "Subscription Renewal Reminder ⏳";
+    const body = `Your subscription to ${planName} renews on ${endStr}. Keep your payment method updated for uninterrupted access.`;
+
+    await this.createInAppNotification(user.id, title, body, "RENEWAL_REMINDER");
+
+    if (user.email) {
+      await this.sendSubscriptionEndingSoonEmail(user, plan, endDate);
+    }
+  }
+
+  async notifyDigitalBillingReceipt(user, amount, currency, invoiceUrl = null, description = "Premium Subscription") {
+    const formattedAmount = `${(currency || "USD").toUpperCase()} ${amount}`;
+    const title = "Digital Receipt Received 🧾";
+    const body = `Payment of ${formattedAmount} received for ${description}. Thank you for your support!`;
+
+    await this.createInAppNotification(user.id, title, body, "BILLING_RECEIPT");
+
+    if (user.email) {
+      await this.sendPaymentAcceptedEmail(user, amount, currency, invoiceUrl);
+    }
   }
 }

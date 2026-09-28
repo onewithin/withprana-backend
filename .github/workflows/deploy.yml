@@ -1,8 +1,9 @@
-name: Deploy to AWS EC2
+name: Deploy changes to EC2
 
 on:
   push:
-    branches: [ "deploy" ]
+    branches:
+      - main
 
 permissions:
   id-token: write
@@ -13,24 +14,77 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
+      # ---------------------------------------
+      # 1. Checkout
+      # ---------------------------------------
       - name: Checkout code
         uses: actions/checkout@v4
 
+
+      # ---------------------------------------
+      # 2. AWS OIDC authentication
+      # ---------------------------------------
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::082228066340:role/GitHubDeployRole
-          aws-region: ap-south-1
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: SSH Deploy
-        uses: appleboy/ssh-action@v1
+
+      # ---------------------------------------
+      # 3. Generate GitHub App token
+      # ---------------------------------------
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v2
         with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ubuntu
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            cd withprana-backend
-            git pull origin deploy
-            npm install
-            npm run build
-            pm2 restart 0 || pm2 start index.js --name app
+          app-id: ${{ secrets.GH_APP_ID }}
+          private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
+
+
+      # ---------------------------------------
+      # 4. Deploy directly to EC2 using SSM
+      # ---------------------------------------
+      - name: Deploy to EC2
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO_NAME: ${{ github.event.repository.name }}
+        run: |
+
+          set -euo pipefail
+
+          echo "Starting deployment..."
+
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "${{ secrets.TARGET_INSTANCE_ID }}" \
+            --document-name "AWS-RunShellScript" \
+            --comment "GitHub Actions deployment - ${GITHUB_SHA}" \
+            --parameters "commands=[
+              \"set -euo pipefail\",
+              \"echo 'Connected to EC2: ' \\$(whoami)@\\$(hostname)\",
+              \"echo 'Deployment started at: ' \\$(date)\",
+              \"export NVM_DIR=\\\"\\$HOME/.nvm\\\"\",
+              \"[ -s \\\"\\$NVM_DIR/nvm.sh\\\" ] && . \\\"\\$NVM_DIR/nvm.sh\\\"\",
+              \"export GITHUB_TOKEN='${GITHUB_TOKEN}'\",
+              \"export REPO_NAME='${REPO_NAME}'\",
+              \"cd /home/ubuntu/\\$REPO_NAME\",
+              \"git fetch origin\",
+              \"git checkout main\",
+              \"git reset --hard origin/main\",
+              \"npm ci\",
+              \"pm2 reload \\$REPO_NAME\",
+              \"echo 'Deployment completed at: ' \\$(date)\"
+            ]" \
+            --query "Command.CommandId" \
+            --output text)
+
+          echo "SSM Command ID: $COMMAND_ID"
+
+          echo "Waiting for deployment..."
+
+          aws ssm wait command-executed \
+            --command-id "$COMMAND_ID" \
+            --instance-id "${{ secrets.TARGET_INSTANCE_ID }}"
+
+          echo "Deployment completed successfully."

@@ -874,16 +874,17 @@ export class SubscriptionUseCases {
             },
           });
 
-          // Send Payment Accepted Email
+          // Send Digital Receipt (In-app + Email)
           const user = await this.userRepo.findById(
             existingSubscription.userId,
           );
-          if (user) {
-            await this.notificationService.sendPaymentAcceptedEmail(
+          if (user && this.notificationService) {
+            await this.notificationService.notifyDigitalBillingReceipt(
               user,
               invoice.amount_paid / 100,
               invoice.currency,
               invoice.hosted_invoice_url,
+              `Subscription payment (${invoice.number || "Receipt"})`,
             );
           }
 
@@ -1208,6 +1209,18 @@ export class SubscriptionUseCases {
       });
 
       await this.userRepo.updateUserSubscriptionType(userId, "premium");
+
+      if (this.notificationService) {
+        const user = await this.userRepo.findById(userId);
+        const plan = await this.subscriptionRepo.findPlanById(planId);
+        if (user && plan) {
+          await this.notificationService.notifyPremiumPlanSelected(
+            user,
+            plan,
+            currentPeriodEnd,
+          );
+        }
+      }
 
       await this.subscriptionRepo.updateTransactionByCheckoutSession(
         session.id,
@@ -1597,18 +1610,30 @@ export class SubscriptionUseCases {
       throw new Error("User not found");
     }
 
-    const activeSubscription = userWithSubscription.subscriptions[0];
+    const activeSubscription = userWithSubscription.subscriptions?.[0] || null;
     const isPremium =
-      activeSubscription &&
+      !!activeSubscription &&
       (activeSubscription.status === "ACTIVE" ||
         activeSubscription.status === "TRIALING") &&
-      new Date() < activeSubscription.currentPeriodEnd;
+      new Date() < new Date(activeSubscription.currentPeriodEnd);
+
+    const plan = activeSubscription?.plan || null;
 
     return {
-      subscriptionType: userWithSubscription.subscriptionType,
+      subscriptionType: userWithSubscription.subscriptionType || (isPremium ? "premium" : "Free"),
       isPremium,
-      activeSubscription: isPremium ? activeSubscription : null,
       hasAccessToPremium: isPremium,
+      status: activeSubscription?.status || "INACTIVE",
+      planId: activeSubscription?.planId || null,
+      planName: plan?.name || null,
+      price: plan?.price ?? null,
+      currency: plan?.currency || null,
+      interval: plan?.interval || null,
+      intervalCount: plan?.intervalCount ?? null,
+      currentPeriodStart: activeSubscription?.currentPeriodStart || null,
+      currentPeriodEnd: activeSubscription?.currentPeriodEnd || null,
+      cancelAtPeriodEnd: activeSubscription?.cancelAtPeriodEnd || false,
+      activeSubscription: isPremium ? activeSubscription : null,
     };
   }
 

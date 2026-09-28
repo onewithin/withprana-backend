@@ -15,7 +15,10 @@ export class MeditationWatchHistoryRepository {
         });
     }
 
-    async findByUserId(userId) {
+    async findByUserId(userId, limit = 20, page = 1) {
+        const take = Number(limit || 20);
+        const skip = (Number(page || 1) - 1) * take;
+
         return this.prisma.meditationWatchHistory.findMany({
             where: { userId },
             include: {
@@ -30,6 +33,8 @@ export class MeditationWatchHistoryRepository {
                 },
             },
             orderBy: { watchedAt: 'desc' },
+            take,
+            skip,
         });
     }
 

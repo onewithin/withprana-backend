@@ -80,6 +80,9 @@ model User {
   notificationsClearedAt  DateTime?                @map("notifications_cleared_at")
   deletedGlobalNotifications UserDeletedGlobalNotification[]
 
+  @@index([subscriptionType])
+  @@index([signupMethod])
+  @@index([createdAt])
   @@map("users")
 }
 
@@ -142,6 +145,10 @@ model Meditation {
   subcategory    Subcategory?             @relation(fields: [subcategoryId], references: [id])
   playlistItems  PlaylistMeditation[]
 
+  @@index([categoryId, isDeleted, active])
+  @@index([subcategoryId, isDeleted, active])
+  @@index([isPremium, isDeleted, active])
+  @@index([playCount(sort: Desc)])
   @@map("meditations")
 }
 
@@ -360,6 +367,8 @@ model Subscription {
   user                 User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   transactions         Transaction[]
 
+  @@index([userId, status, currentPeriodEnd])
+  @@index([status, currentPeriodEnd])
   @@map("subscriptions")
 }
 
@@ -382,6 +391,8 @@ model Transaction {
   subscription          Subscription?     @relation(fields: [subscriptionId], references: [id])
   user                  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([status, type])
   @@map("transactions")
 }
 

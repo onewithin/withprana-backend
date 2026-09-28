@@ -2,7 +2,7 @@ import { Queue, Worker } from "bullmq";
 import IORedis from "ioredis";
 import { prisma } from "./database.js";
 
-const connection = new IORedis({
+export const connection = new IORedis({
   host: "redis-10371.c52.us-east-1-4.ec2.redns.redis-cloud.com",
   port: 10371,
   username: "default",
@@ -10,7 +10,10 @@ const connection = new IORedis({
   maxRetriesPerRequest: null,
 });
 
-// ----------------- Thought Queue -----------------
+connection.on("error", (err) => {
+  console.warn("⚠️ Redis connection event warning:", err.message);
+});
+
 export const thoughtQueue = new Queue("thoughtOfTheDayQueue", { connection, skipConfigCheck: true });
 export const thoughtWorker = new Worker(
   "thoughtOfTheDayQueue",
@@ -27,7 +30,6 @@ thoughtWorker.on("failed", (job, err) => {
   console.error(`Thought job failed ${job.id} with error: ${err.message}`);
 });
 
-// ----------------- Push Notification Queue -----------------
 import pushNotificationService from "../infrastructure/services/pushNotificationService.js";
 
 export const pushQueue = new Queue("pushNotificationQueue", { connection, skipConfigCheck: true });
@@ -37,7 +39,6 @@ export const pushWorker = new Worker(
     const { title, message, imageUrl, sendToAllSubscribed } = job.data;
     
     if (sendToAllSubscribed) {
-      // Broadcast mode relies on OneSignal internal logic
       await pushNotificationService.sendNotification({
         title,
         message,
@@ -45,7 +46,6 @@ export const pushWorker = new Worker(
         sendToAllSubscribed: true
       });
       
-      // Scalable O(1) broadcast save!
       await prisma.globalNotification.create({
         data: {
           title: title || "New Notification",
@@ -54,13 +54,11 @@ export const pushWorker = new Worker(
         }
       });
     } else {
-      // Chunked delivery using customer database IDs
       const batchSize = 10000;
       let skip = 0;
       let hasMore = true;
 
       while (hasMore) {
-        // Fetch specific user customer IDs efficiently in chunks
         const users = await prisma.user.findMany({
           select: { id: true, active: true },
           where: { active: true },
@@ -81,7 +79,6 @@ export const pushWorker = new Worker(
           imageUrl
         });
 
-        // Scalably save the isolated notification arrays into database
         const historyPayload = users.map(u => ({
           userId: String(u.id),
           title: title || "New Notification",
@@ -105,7 +102,6 @@ pushWorker.on("failed", (job, err) => {
   console.error(`Push job failed ${job.id} with error: ${err.message}`);
 });
 
-// ----------------- Meditation Queue -----------------
 export const meditationQueue = new Queue("meditationQueue", { connection, skipConfigCheck: true });
 export const meditationWorker = new Worker(
   "meditationQueue",
@@ -117,12 +113,11 @@ export const meditationWorker = new Worker(
       select: { title: true, thumbnail: true }
     });
 
-    // Schedule background broadcast of unlocked meditation across the 200,000+ base
     await pushQueue.add("newMeditationPush", {
       title: "New Meditation Released!",
       message: `"${updatedMeditation.title}" is now available to listen to.`,
       imageUrl: updatedMeditation.thumbnail,
-      sendToAllSubscribed: true // Broadcast globally via push provider and save a single GlobalNotification
+      sendToAllSubscribed: true 
     });
   },
   { connection, skipConfigCheck: true },
@@ -131,7 +126,6 @@ meditationWorker.on("failed", (job, err) => {
   console.error(`Meditation job failed ${job.id} with error: ${err.message}`);
 });
 
-// ----------------- Inactivity Queue -----------------
 import { InactivityService } from "../infrastructure/services/inactivityService.js";
 import { generateAndUploadLogsPDF } from "../utils/generateSSRLogs.js";
 const inactivityService = new InactivityService();
@@ -148,7 +142,7 @@ inactivityWorker.on("failed", (job, err) => {
   console.error(`Inactivity job failed ${job.id} with error: ${err.message}`);
 });
 
-// ----------------- SAR Log Queue -----------------
+
 export const sarLogQueue = new Queue("createSARLog", { connection, skipConfigCheck: true });
 export const sarLogWorker = new Worker(
   "createSARLog",

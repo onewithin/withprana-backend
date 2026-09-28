@@ -3,7 +3,7 @@ import { MeditationUsecase } from "../../domain/usecases/meditationUsecase.js";
 import { MeditationController } from "../controllers/meditationController.js";
 import fastifyMultipart from "@fastify/multipart";
 import sharp from "sharp";
-import { uploadToS3 } from "../../infrastructure/services/uploadToS3.js";
+import { uploadToS3, generatePresignedUrl, moveS3Object } from "../../infrastructure/services/uploadToS3.js";
 import {
   convertToHLS,
   removeFolder,
@@ -31,6 +31,21 @@ export const meditationRoutes = async (
       files: 5,
     },
     attachFieldsToBody: true,
+  });
+
+  app.get("/presigned-url", async (req, reply) => {
+    try {
+      const { fileName, fileType } = req.query;
+      if (!fileName || !fileType) {
+        return reply.status(400).send({ error: "fileName and fileType are required query parameters" });
+      }
+      
+      const result = await generatePresignedUrl(fileName, fileType);
+      return reply.send(result);
+    } catch (error) {
+      console.error("Presigned URL error:", error);
+      return reply.status(500).send({ error: "Failed to generate presigned URL" });
+    }
   });
 
   app.post("/", async (req, reply) => {
@@ -76,8 +91,24 @@ export const meditationRoutes = async (
           `audio/${title?.value}-${Date.now()}`,
         );
         audioFileUrl = audio[0];
+      } else if (typeof audioFile === "object" && audioFile.value && typeof audioFile.value === "string") {
+        const s3Key = audioFile.value.trim();
+        if (s3Key.startsWith("audio/tmp/")) {
+          const newKey = s3Key.replace("audio/tmp/", "audio/");
+          audioFileUrl = await moveS3Object(s3Key, newKey);
+          originalAudioKey = newKey;
+        } else {
+          audioFileUrl = s3Key;
+        }
       } else if (typeof audioFile === "string" && audioFile.trim() !== "") {
-        audioFileUrl = audioFile;
+        const s3Key = audioFile.trim();
+        if (s3Key.startsWith("audio/tmp/")) {
+          const newKey = s3Key.replace("audio/tmp/", "audio/");
+          audioFileUrl = await moveS3Object(s3Key, newKey);
+          originalAudioKey = newKey;
+        } else {
+          audioFileUrl = s3Key;
+        }
       }
 
       if (!audioFileUrl) {
@@ -227,6 +258,7 @@ export const meditationRoutes = async (
         subcategoryId,
         type,
         appImg,
+        tags,
       } = req.body;
 
       let audioFileUrl = null;
@@ -253,8 +285,24 @@ export const meditationRoutes = async (
           `audio/${title?.value}-${Date.now()}`,
         );
         audioFileUrl = audio[0];
+      } else if (typeof audioFile === "object" && audioFile.value && typeof audioFile.value === "string") {
+        const s3Key = audioFile.value.trim();
+        if (s3Key.startsWith("audio/tmp/")) {
+          const newKey = s3Key.replace("audio/tmp/", "audio/");
+          audioFileUrl = await moveS3Object(s3Key, newKey);
+          originalAudioKey = newKey;
+        } else {
+          audioFileUrl = s3Key;
+        }
       } else if (typeof audioFile === "string" && audioFile.trim() !== "") {
-        audioFileUrl = audioFile;
+        const s3Key = audioFile.trim();
+        if (s3Key.startsWith("audio/tmp/")) {
+          const newKey = s3Key.replace("audio/tmp/", "audio/");
+          audioFileUrl = await moveS3Object(s3Key, newKey);
+          originalAudioKey = newKey;
+        } else {
+          audioFileUrl = s3Key;
+        }
       }
 
       if (thumbnail?.file) {
@@ -292,6 +340,25 @@ export const meditationRoutes = async (
 
       if (typeof appImg === "string" && appImg.trim() !== "") {
         appImgUrl = appImg;
+      }
+
+      let parsedTags = undefined;
+      if (tags !== undefined) {
+        const rawTags = typeof tags === "object" && tags.value !== undefined ? tags.value : tags;
+        if (typeof rawTags === "string") {
+          try {
+            parsedTags = JSON.parse(rawTags);
+          } catch (e) {
+            parsedTags = rawTags
+              .split(",")
+              .map((tag) => tag.trim())
+              .filter((tag) => tag);
+          }
+        } else if (Array.isArray(rawTags)) {
+          parsedTags = rawTags
+            .map((tag) => (typeof tag === "object" ? tag.value || tag.id : tag))
+            .filter((tag) => tag);
+        }
       }
 
       const updatePayload = {
@@ -341,6 +408,7 @@ export const meditationRoutes = async (
               ? active.value === "true"
               : Boolean(active),
         }),
+        ...(parsedTags !== undefined && { tags: parsedTags }),
       };
 
       await controller.update({ id, data: updatePayload }, reply);

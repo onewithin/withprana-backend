@@ -1,18 +1,26 @@
+import { CacheService } from "../../services/cacheService.js";
+
 export class TagRepository {
     constructor(prisma) {
         this.prisma = prisma;
     }
 
     async create(data) {
-        return this.prisma.tag.create({
+        const created = await this.prisma.tag.create({
             data: {
                 name: data.name,
             },
         });
+        await CacheService.clearPattern("tags:*");
+        return created;
     }
 
     async findAll() {
-        return this.prisma.tag.findMany({
+        const cacheKey = "tags:all";
+        const cached = await CacheService.get(cacheKey);
+        if (cached) return cached;
+
+        const tags = await this.prisma.tag.findMany({
             where: {
                 active: true,
                 isDeleted: false,
@@ -21,6 +29,8 @@ export class TagRepository {
                 createdAt: 'desc'
             }
         });
+        await CacheService.set(cacheKey, tags, 900);
+        return tags;
     }
 
     async findByNameAndCategory(name, categoryId) {
@@ -41,9 +51,11 @@ export class TagRepository {
     }
 
     async delete(id) {
-        return this.prisma.tag.update({
+        const deleted = await this.prisma.tag.update({
             where: { id },
             data: { isDeleted: true, active: false },
         });
+        await CacheService.clearPattern("tags:*");
+        return deleted;
     }
 }

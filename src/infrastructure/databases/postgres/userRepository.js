@@ -107,20 +107,39 @@ export class PrismaUserRepository {
         ? { [sort]: order?.toLowerCase() === "asc" ? "asc" : "desc" }
         : undefined;
 
-      // When searching, fetch all matching records (no pagination at DB level)
-      // because name/email are encrypted and must be filtered after decryption.
       if (search) {
-        const allUsers = await this.prisma.user.findMany({
+        const term = search.trim();
+        const encryptedEmailCandidate = encryptDeterministic(term);
+
+        const exactEmailMatch = await this.prisma.user.findUnique({
+          where: { email: encryptedEmailCandidate },
+        });
+
+        if (exactEmailMatch) {
+          const decrypted = this._decryptUser({ ...exactEmailMatch });
+          return {
+            data: [decrypted],
+            pagination: {
+              total: 1,
+              page: 1,
+              limit,
+              totalPages: 1,
+            },
+          };
+        }
+
+        const candidateUsers = await this.prisma.user.findMany({
           where,
+          take: 500,
           ...(orderBy && { orderBy }),
         });
 
-        const term = search.toLowerCase();
-        const decryptedAll = allUsers.map((u) => this._decryptUser({ ...u }));
-        const filtered = decryptedAll.filter(
+        const termLower = term.toLowerCase();
+        const decryptedCandidates = candidateUsers.map((u) => this._decryptUser({ ...u }));
+        const filtered = decryptedCandidates.filter(
           (u) =>
-            (u.name && u.name.toLowerCase().includes(term)) ||
-            (u.email && u.email.toLowerCase().includes(term))
+            (u.name && u.name.toLowerCase().includes(termLower)) ||
+            (u.email && u.email.toLowerCase().includes(termLower))
         );
 
         const total = filtered.length;
@@ -133,7 +152,7 @@ export class PrismaUserRepository {
             total,
             page,
             limit,
-            totalPages: Math.ceil(total / limit),
+            totalPages: Math.ceil(total / limit) || 1,
           },
         };
       }

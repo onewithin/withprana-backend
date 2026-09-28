@@ -1,4 +1,5 @@
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, CopyObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import fs from "fs";
 import path from "path";
 import dotenv from "dotenv";
@@ -90,5 +91,70 @@ export async function uploadToS3(source, destinationFolder = "audio") {
   } catch (error) {
     console.log(error);
     return [];
+  }
+}
+
+/**
+ * Generate a presigned URL for direct frontend upload
+ * @param {string} fileName - Original file name
+ * @param {string} fileType - MIME type of the file
+ * @param {string} destinationFolder - Folder to upload to (default 'audio/tmp')
+ * @returns {Promise<{presignedUrl: string, key: string}>}
+ */
+export async function generatePresignedUrl(fileName, fileType, destinationFolder = "audio/tmp") {
+  try {
+    const s3Key = `${destinationFolder}/${Date.now()}-${fileName.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
+    
+    const command = new PutObjectCommand({
+      Bucket: process.env.AWS_S3_BUCKET,
+      Key: s3Key,
+      ContentType: fileType,
+    });
+
+    // URL expires in 1 hour (3600 seconds)
+    const presignedUrl = await getSignedUrl(s3, command, { expiresIn: 3600 });
+
+    return {
+      presignedUrl,
+      key: s3Key,
+      url: `${process.env.CLOUDFRONT_URL}/${s3Key}`
+    };
+  } catch (error) {
+    console.error("Error generating presigned URL:", error);
+    throw new Error("Failed to generate presigned URL");
+  }
+}
+
+/**
+ * Move an object within S3 (Copy then Delete)
+ * @param {string} sourceKey - The key of the object to move
+ * @param {string} destinationKey - The new key for the object
+ * @returns {Promise<string>} - The new CloudFront URL
+ */
+export async function moveS3Object(sourceKey, destinationKey) {
+  try {
+    const bucket = process.env.AWS_S3_BUCKET;
+    
+    // 1. Copy the object
+    await s3.send(
+      new CopyObjectCommand({
+        Bucket: bucket,
+        CopySource: encodeURI(`${bucket}/${sourceKey}`),
+        Key: destinationKey,
+      })
+    );
+
+    // 2. Delete the original object
+    await s3.send(
+      new DeleteObjectCommand({
+        Bucket: bucket,
+        Key: sourceKey,
+      })
+    );
+
+    return `${process.env.CLOUDFRONT_URL}/${destinationKey}`;
+  } catch (error) {
+    console.error("Error moving S3 object:", error);
+    throw new Error("Failed to move S3 object");
   }
 }

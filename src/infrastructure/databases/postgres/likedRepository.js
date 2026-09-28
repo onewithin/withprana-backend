@@ -30,23 +30,25 @@ export class LikedRepository {
     });
   }
 
-  async getLikedMeditations(userId, categoryId = null, type = null, limit = null,skip=null) {
-  return this.prisma.liked.findMany({
-  where: {
-    userId,
-    meditation: {
-      ...(categoryId && { categoryId: Number(categoryId) }),
-      ...(type && { type }),
-    },
-  },
-  include: {
-    meditation: true,
-  },
-  orderBy: {
-    createdAt: 'desc',
-  },
-  ...(limit && { take: Number(limit) }),
-  ...(skip && { skip: Number(skip) }),
-});
-}
+  async getLikedMeditations(userId, categoryId = null, type = null, limit = null, skip = null) {
+    return this.prisma.liked.findMany({
+      where: {
+        userId,
+        meditation: {
+          ...(categoryId && { categoryId }),
+          ...(type && { type }),
+          isDeleted: false,
+          active: true,
+        },
+      },
+      include: {
+        meditation: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      ...(limit && { take: Number(limit) }),
+      ...(skip && { skip: Number(skip) }),
+    });
+  }
 }

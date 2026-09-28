@@ -1,10 +1,12 @@
+import { CacheService } from "../../services/cacheService.js";
+
 export class SubcategoryRepository {
   constructor(prisma) {
     this.prisma = prisma;
   }
 
   async create(data) {
-    return this.prisma.subcategory.create({
+    const created = await this.prisma.subcategory.create({
       data: {
         name: data.name,
         color: data?.color || null,
@@ -22,9 +24,17 @@ export class SubcategoryRepository {
         },
       },
     });
+
+    await CacheService.clearPattern("subcategories:*");
+    await CacheService.clearPattern("categories:*");
+    return created;
   }
 
   async findById(id, userId) {
+    const cacheKey = `subcategories:id:${id}:${userId || ''}`;
+    const cached = await CacheService.get(cacheKey);
+    if (cached) return cached;
+
     const include = {
       category: true,
       meditations: {
@@ -33,7 +43,6 @@ export class SubcategoryRepository {
           isDeleted: false,
         },
         include: {
-          // Include likedUsers for each meditation if userId is provided
           ...(userId && {
             likedUsers: {
               where: { userId: userId },
@@ -50,12 +59,10 @@ export class SubcategoryRepository {
     });
 
     if (subcategory && subcategory.meditations) {
-      // Map meditations to add isLiked field based on likedUsers presence
       subcategory.meditations = subcategory.meditations.map((meditation) => {
         const isLiked = userId
           ? meditation.likedUsers && meditation.likedUsers.length > 0
           : false;
-        // Remove likedUsers from the response to keep it clean
         if (meditation.likedUsers) delete meditation.likedUsers;
 
         return {
@@ -65,13 +72,18 @@ export class SubcategoryRepository {
       });
     }
 
-    // Removed subcategory.isLiked logic as requested
-
+    if (subcategory) {
+      await CacheService.set(cacheKey, subcategory, 900);
+    }
     return subcategory;
   }
 
   async findAll(categoryId) {
-    return this.prisma.subcategory.findMany({
+    const cacheKey = `subcategories:all:${categoryId || ''}`;
+    const cached = await CacheService.get(cacheKey);
+    if (cached) return cached;
+
+    const subcategories = await this.prisma.subcategory.findMany({
       where: {
         active: true,
         isDeleted: false,
@@ -94,10 +106,13 @@ export class SubcategoryRepository {
         createdAt: "desc",
       },
     });
+
+    await CacheService.set(cacheKey, subcategories, 900);
+    return subcategories;
   }
 
   async update(id, data) {
-    return this.prisma.subcategory.update({
+    const updated = await this.prisma.subcategory.update({
       where: { id },
       data: {
         ...data,
@@ -113,10 +128,14 @@ export class SubcategoryRepository {
         },
       },
     });
+
+    await CacheService.clearPattern("subcategories:*");
+    await CacheService.clearPattern("categories:*");
+    return updated;
   }
 
   async delete(id) {
-    return this.prisma.subcategory.update({
+    const deleted = await this.prisma.subcategory.update({
       where: { id },
       data: {
         isDeleted: true,
@@ -124,6 +143,10 @@ export class SubcategoryRepository {
         updatedAt: new Date(),
       },
     });
+
+    await CacheService.clearPattern("subcategories:*");
+    await CacheService.clearPattern("categories:*");
+    return deleted;
   }
 
   async findByName(name) {
@@ -158,7 +181,7 @@ export class SubcategoryRepository {
   }
 
   async restore(id) {
-    return this.prisma.subcategory.update({
+    const restored = await this.prisma.subcategory.update({
       where: { id },
       data: {
         isDeleted: false,
@@ -166,6 +189,10 @@ export class SubcategoryRepository {
         updatedAt: new Date(),
       },
     });
+
+    await CacheService.clearPattern("subcategories:*");
+    await CacheService.clearPattern("categories:*");
+    return restored;
   }
 
   async findByNameAndCategory(name, categoryId) {

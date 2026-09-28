@@ -1,3 +1,5 @@
+import { CacheService } from "../../services/cacheService.js";
+
 export class MeditationRepository {
   constructor(prisma) {
     // Emergency fallback if prisma is not provided
@@ -37,7 +39,7 @@ export class MeditationRepository {
 
   async create(data) {
     await this.ensurePrisma();
-    return this.prisma.meditation.create({
+    const created = await this.prisma.meditation.create({
       data: {
         title: data.title,
         description: data.description,
@@ -81,6 +83,10 @@ export class MeditationRepository {
         },
       },
     });
+
+    await CacheService.clearPattern("meditations:*");
+    await CacheService.clearPattern("dashboard:stats");
+    return created;
   }
 
   async findById(id, userId) {
@@ -169,6 +175,12 @@ export class MeditationRepository {
 
   async findAll(limit = 10, page = 1, sort, order, search, isPremium, categoryId) {
     await this.ensurePrisma();
+    const cacheKey = `meditations:all:${limit}:${page}:${sort || ''}:${order || ''}:${search || ''}:${isPremium || ''}:${categoryId || ''}`;
+    const cached = await CacheService.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     const skip = (Number(page || 1) - 1) * Number(limit || 10);
 
     const where = {
@@ -204,7 +216,7 @@ export class MeditationRepository {
       this.prisma.meditation.count({ where }),
     ]);
 
-    return {
+    const result = {
       data,
       pagination: {
         total,
@@ -213,12 +225,15 @@ export class MeditationRepository {
         totalPages: Math.ceil(total / (limit || 10)),
       },
     };
+
+    await CacheService.set(cacheKey, result, 900); // 15 minute TTL
+    return result;
   }
 
   async update(id, data) {
     await this.ensurePrisma();
     const updateData = { ...data };
-    console.log(data);
+
     if (data.categoryId !== undefined) {
       updateData.category = {
         connect: { id: data.categoryId },
@@ -233,26 +248,53 @@ export class MeditationRepository {
       delete updateData.subcategoryId;
     }
 
-    if (data.isPremium) {
+    if (data.isPremium !== undefined) {
       updateData.isPremium = Boolean(data.isPremium);
     }
 
-    return this.prisma.meditation.update({
+    if (data.active !== undefined) {
+      updateData.active = Boolean(data.active);
+    }
+
+    if (data.tags && Array.isArray(data.tags)) {
+      updateData.meditationTags = {
+        deleteMany: {},
+        create: data.tags.map((tagId) => ({
+          tag: { connect: { id: tagId } },
+        })),
+      };
+      delete updateData.tags;
+    }
+
+    const updated = await this.prisma.meditation.update({
       where: { id: id },
       data: updateData,
       include: {
         category: true,
         subcategory: true,
+        meditationTags: {
+          include: {
+            tag: true,
+          },
+        },
       },
     });
+
+    await CacheService.clearPattern("meditations:*");
+    await CacheService.clearPattern("dashboard:stats");
+    return updated;
   }
 
   async delete(id) {
     await this.ensurePrisma();
-    return this.prisma.meditation.update({
+    const result = await this.prisma.meditation.update({
       where: { id: id },
       data: { isDeleted: true },
     });
+
+    await CacheService.clearPattern("meditations:*");
+    await CacheService.clearPattern("dashboard:stats");
+    return result;
   }
 
   async findByUserSelectedTags(userId, limit = 10, page = 1, sort, order) {
